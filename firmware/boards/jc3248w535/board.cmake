@@ -1,0 +1,6 @@
+set(BOARD_TARGET esp32s3)
+set(BOARD_FLASH 16mb)
+set(BOARD_PSRAM octal)
+set(BOARD_LINK usb)
+set(BOARD_DRIVERS)
+set(BOARD_DECK 320x480)

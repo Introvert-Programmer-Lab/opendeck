@@ -1,0 +1,12 @@
+dependencies:
+  idf: ">=5.5"
+  espressif/mdns: "1.13.1"
+  joltwallet/littlefs: "*"
+  espressif/esp_lcd_axs15231b:
+    version: "*"
+    rules:
+      - if: "target == esp32s3"
+  espressif/esp_tinyusb:
+    version: "~1.7.0"
+    rules:
+      - if: "target in [esp32s2, esp32s3]"

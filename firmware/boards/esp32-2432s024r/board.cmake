@@ -1,0 +1,6 @@
+set(BOARD_TARGET esp32)
+set(BOARD_FLASH 4mb)
+set(BOARD_PSRAM none)
+set(BOARD_LINK uart)
+set(BOARD_DRIVERS backlight panel_spi touch_xpt2046)
+set(BOARD_DECK 240x320)

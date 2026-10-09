@@ -1,0 +1,60 @@
+name: opendeck
+description: "Open source stream deck app and firmware for ESP32-S3 touch screens."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.1
+
+dependencies:
+  crypto: ^3.0.6
+  ffi: ^2.2.0
+  file_picker: ^13.1.0
+  flutter:
+    sdk: flutter
+  flutter_libserialport: ^0.6.0
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  flutter_svg: ^2.3.0
+  image: ^4.10.1
+  intl: ^0.20.2
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.6
+  tray_manager: ^0.5.3
+  window_manager: ^0.5.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo/
+    - assets/firmware/
+    - assets/icons/
+    - assets/default_icons/
+  fonts:
+    - family: Lexend
+      fonts:
+        - asset: assets/fonts/Lexend-Regular.ttf
+        - asset: assets/fonts/Lexend-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Lexend-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Lexend-Bold.ttf
+          weight: 700
+    - family: Alexandria
+      fonts:
+        - asset: assets/fonts/Alexandria-Regular.ttf
+        - asset: assets/fonts/Alexandria-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Alexandria-Bold.ttf
+          weight: 700
+    - family: Unbounded
+      fonts:
+        - asset: assets/fonts/Unbounded-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Unbounded-ExtraBold.ttf
+          weight: 800

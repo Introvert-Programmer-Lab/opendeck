@@ -1,0 +1,6 @@
+set(BOARD_TARGET esp32s3)
+set(BOARD_FLASH 4mb)
+set(BOARD_PSRAM octal)
+set(BOARD_LINK usb)
+set(BOARD_DRIVERS backlight i2c_bus panel_qspi touch_gt911)
+set(BOARD_DECK 480x272)

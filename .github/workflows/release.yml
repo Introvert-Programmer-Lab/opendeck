@@ -1,0 +1,104 @@
+name: release
+
+# Push a tag like v0.2.0 to build the firmware and the apps and publish them.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { board: jc3248w535, target: esp32s3 }
+          - { board: jc4827w543c, target: esp32s3 }
+          - { board: es3c28p, target: esp32s3 }
+          - { board: esp32-8048s043c, target: esp32s3 }
+          - { board: esp32-8048s050c, target: esp32s3 }
+          - { board: esp32-8048s070c, target: esp32s3 }
+          - { board: esp32-4827s043c, target: esp32s3 }
+          - { board: esp32-4848s040c, target: esp32s3 }
+          - { board: esp32-2432s028r, target: esp32 }
+          - { board: esp32-2432s028rv3, target: esp32 }
+          - { board: jc2432w328c, target: esp32 }
+          - { board: esp32-2432s024c, target: esp32 }
+          - { board: esp32-2432s024r, target: esp32 }
+          - { board: esp32-2432s032c, target: esp32 }
+          - { board: esp32-3248s035c, target: esp32 }
+          - { board: esp32-3248s035r, target: esp32 }
+    name: firmware (${{ matrix.board }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and merge the firmware image
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: ${{ matrix.target }}
+          path: firmware
+          # The merged image starts at 0x0 (the ESP32's bootloader sits at 0x1000, padded before it).
+          command: >-
+            idf.py -B build/${{ matrix.board }} -DOPENDECK_BOARD=${{ matrix.board }} build &&
+            cd build/${{ matrix.board }} &&
+            python -m esptool --chip ${{ matrix.target }} merge_bin -o opendeck-${{ matrix.board }}.bin @flash_args
+      - name: Trim and checksum
+        run: |
+          mkdir dist
+          f=opendeck-${{ matrix.board }}.bin
+          python3 tools/trim_image.py firmware/build/${{ matrix.board }}/$f dist/$f
+          cd dist
+          sha256sum $f > $f.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.board }}
+          path: dist/
+
+  windows:
+    needs: firmware
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: assets/firmware
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.1
+          cache: true
+      - run: flutter build windows --release
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          if (-not ($version -match '^\d+\.\d+\.\d+')) { $version = (Select-String -Path pubspec.yaml -Pattern '^version: ([0-9.]+)').Matches[0].Groups[1].Value }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "dist/OpenDeck-$version-windows-x64.zip"
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer\opendeck.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [firmware, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

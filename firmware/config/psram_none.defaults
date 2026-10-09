@@ -1,0 +1,1 @@
+# No PSRAM: the firmware draws the screen in bands from internal RAM.

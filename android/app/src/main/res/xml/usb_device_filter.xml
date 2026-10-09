@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Espressif: ESP32-S3 USB-Serial/JTAG and the OpenDeck firmware -->
+    <usb-device vendor-id="12346"/>
+    <!-- USB-UART bridges on boards without native USB: WCH CH340, Silicon Labs CP210x -->
+    <usb-device vendor-id="6790"/>
+    <usb-device vendor-id="4292"/>
+</resources>
