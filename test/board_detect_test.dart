@@ -223,9 +223,15 @@ void main() {
             controller: controller,
           );
       expect(decide(cyd(ownBus: true, controller: 'ILI9341')).boards.map((b) => b.id), ['esp32-2432s028r']);
-      expect(decide(cyd(ownBus: true, controller: 'ST7789')).boards.map((b) => b.id), ['esp32-2432s028rv3']);
-      expect(decide(cyd(ownBus: true)).boards.map((b) => b.id), ['esp32-2432s028r', 'esp32-2432s028rv3']);
+      expect(decide(cyd(ownBus: true, controller: 'ST7789')).boards.map((b) => b.id), ['esp32-2432s028r-2usb']);
+      expect(decide(cyd(ownBus: true)).boards.map((b) => b.id),
+          ['esp32-2432s028r', 'esp32-2432s028r-2usb', 'esp32-2432s028rv3']);
       expect(decide(cyd(ownBus: false, controller: 'ST7796')).boards.map((b) => b.id), ['esp32-3248s035r']);
+    });
+
+    test('the v3 CYD panel ID cannot be read (MISO not wired)', () {
+      expect(BoardProfile.byId('esp32-2432s028rv3')!.controllerReadable, isFalse);
+      expect(BoardProfile.byId('esp32-2432s028r-2usb')!.controllerReadable, isTrue);
     });
 
     test('capacitive CYD boards by touch controller and resolution', () {

@@ -77,6 +77,18 @@ class _DeviceDialogState extends ConsumerState<_DeviceDialog> {
                 _info(s.storage, '${s.sizeKb(info.fsUsed)} / ${s.sizeKb(info.fsTotal)}'),
                 _info(s.wifi, info.wifiAp ? '${s.hotspotHint}: ${info.wifiSsid}' : (info.wifiConnected ? info.wifiSsid : '-')),
                 _info(s.address, info.wifiIp),
+                if (info.touch == 'resistive') ...[
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.my_location_rounded, size: 18),
+                      label: Text(s.calibrateTouch),
+                      onPressed: ctl.calibrateTouch,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(s.calibrateTouchHint, style: const TextStyle(color: AppTheme.muted, fontSize: 12))),
+                  ]),
+                ],
                 const SizedBox(height: 6),
                 FieldRow(
                   label: s.brightness,

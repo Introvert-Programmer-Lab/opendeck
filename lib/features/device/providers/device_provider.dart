@@ -356,6 +356,15 @@ class DeviceController extends Notifier<DeviceState> {
     }
   }
 
+  /// Starts the on-screen touch calibration (resistive boards).
+  Future<void> calibrateTouch() async {
+    try {
+      await _client?.calibrateTouch();
+    } catch (e) {
+      debugPrint('$e');
+    }
+  }
+
   Future<void> setBrightness(int v) async {
     try {
       await _client?.setBrightness(v);

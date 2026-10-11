@@ -3,3 +3,4 @@
 #define DISP_W 320
 #define DISP_H 480
 #define BOARD_FRAMEBUFFER 0
+#define BOARD_TOUCH_RESISTIVE 1

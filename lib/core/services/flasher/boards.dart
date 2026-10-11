@@ -52,6 +52,7 @@ class BoardProfile {
     this.resistive,
     this.display,
     this.controller,
+    this.controllerReadable = true,
     this.verified = false,
     this.stockUrl,
     this.stockSha256,
@@ -84,6 +85,10 @@ class BoardProfile {
 
   /// Display controller (for SPI panels, matched against the ID read back).
   final String? controller;
+
+  /// Whether the panel's ID can be read back (its MISO line is wired). When it
+  /// isn't, an ID that was read must come from another board.
+  final bool controllerReadable;
 
   /// Tested on real hardware. Other boards are built from their published pinouts.
   final bool verified;
@@ -241,6 +246,21 @@ class BoardProfile {
       controller: 'ILI9341',
     ),
     BoardProfile(
+      id: 'esp32-2432s028r-2usb',
+      name: 'Sunton ESP32-2432S028R (2 USB)',
+      aliases: ['CYD2USB', 'Cheap Yellow Display (USB-C + micro-USB)'],
+      inches: 2.8,
+      width: 240,
+      height: 320,
+      chip: ChipFamily.esp32,
+      link: UsbLink.bridge,
+      flashSizes: {_mb4},
+      touchKind: 'resistive',
+      resistive: _xptOwnBus,
+      display: _cydDisplay,
+      controller: 'ST7789',
+    ),
+    BoardProfile(
       id: 'esp32-2432s028rv3',
       name: 'Sunton ESP32-2432S028R v3',
       aliases: ['Cheap Yellow Display (USB-C, ST7789)'],
@@ -254,6 +274,7 @@ class BoardProfile {
       resistive: _xptOwnBus,
       display: _cydDisplay,
       controller: 'ST7789',
+      controllerReadable: false, // panel MISO is not wired
     ),
     BoardProfile(
       id: 'jc2432w328c',

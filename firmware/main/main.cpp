@@ -13,6 +13,8 @@
 #include "board.h"
 #include "gfx.h"
 #include "jpeg.h"
+#include "jpeg_stream.h"
+#include "touch_cal.h"
 #include "net.h"
 #include "proto.h"
 #include "cJSON.h"
@@ -31,7 +33,20 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
-#define FW_VERSION "0.1.0"
+#define FW_VERSION "0.2.0"
+
+#ifndef BOARD_TOUCH_RESISTIVE
+#define BOARD_TOUCH_RESISTIVE 0
+#endif
+// A lift only counts after this long with no finger. Capacitive controllers
+// (AXS15231B, CST816) go quiet for tens of ms mid-press; the XPT2046 doesn't,
+// so resistive boards can react much sooner.
+#if BOARD_TOUCH_RESISTIVE
+#define TOUCH_LIFT_US 60000
+#else
+#define TOUCH_LIFT_US 150000
+#endif
+#define CALIBRATE_HOLD_US 5000000  // resistive boards: hold a finger this long to recalibrate
 #define FS_ROOT "/fs"
 #define DECK_DIR FS_ROOT "/deck"
 #define STAGE_DIR FS_ROOT "/stage"
@@ -79,6 +94,23 @@ static int dirty_y0 = 0, dirty_y1 = DISP_H;  // rows that need a redraw
 volatile uint32_t g_frames, g_flush_ms, g_flush_timeouts;
 static int pressed = -1;
 static bool show_info = false;
+static volatile bool calibrate_request = false;
+
+#if !BOARD_FRAMEBUFFER
+// Toggle tiles ("on" images) of the current page, decoded once into RAM: the
+// page itself is decoded in one streaming pass, so tiles can't be decoded inside it.
+struct AltTile {
+  int key;
+  uint16_t *px;
+};
+static std::vector<AltTile> alt_cache;
+static int alt_cache_page = -1;
+static void alt_cache_clear(void) {
+  for (auto &a : alt_cache) heap_caps_free(a.px);
+  alt_cache.clear();
+  alt_cache_page = -1;
+}
+#endif
 
 // Helpers
 static bool host_active(const Channel &c) {
@@ -224,6 +256,8 @@ static void compose_info(const Canvas &c) {
   gfx_text_center(c, FONT_BODY, DISP_W, DISP_H - 28, ver, COL_MUTED);
 }
 
+static void compose_overlays(const Canvas &c);
+
 static void compose(const Canvas &c) {
   if (show_info || !deck_loaded || pages.empty()) {
     compose_info(c);
@@ -235,12 +269,28 @@ static void compose(const Canvas &c) {
   gfx_fill(c, COL_DARK);
   jpeg_draw_file(c, page_path().c_str(), 0, 0);
 #endif
+  compose_overlays(c);
+}
+
+// Everything drawn over the page image: toggle tiles, press feedback, connection dot.
+static void compose_overlays(const Canvas &c) {
   Page &p = pages[cur_page];
-  for (auto &k : p.keys)
-    if (k.on && !k.alt.empty() && gfx_overlaps(c, k.x, k.y, k.w, k.h)) {
-      std::string path = std::string(DECK_DIR "/") + k.alt;
-      jpeg_draw_file(c, path.c_str(), k.x, k.y);
+  for (size_t i = 0; i < p.keys.size(); i++) {
+    Key &k = p.keys[i];
+    if (!k.on || k.alt.empty() || !gfx_overlaps(c, k.x, k.y, k.w, k.h)) continue;
+#if BOARD_FRAMEBUFFER
+    std::string path = std::string(DECK_DIR "/") + k.alt;
+    jpeg_draw_file(c, path.c_str(), k.x, k.y);
+#else
+    for (auto &a : alt_cache) {
+      if (a.key != (int)i) continue;
+      int ya = k.y > c.y ? k.y : c.y, yb = k.y + k.h < c.y + c.h ? k.y + k.h : c.y + c.h;
+      int xa = k.x > c.x ? k.x : c.x, xb = k.x + k.w < c.x + c.w ? k.x + k.w : c.x + c.w;
+      for (int y = ya; y < yb && xb > xa; y++)
+        memcpy(c.px + (y - c.y) * c.w + (xa - c.x), a.px + (y - k.y) * k.w + (xa - k.x), (xb - xa) * 2);
     }
+#endif
+  }
   if (pressed >= 0 && pressed < (int)p.keys.size()) {
     Key &k = p.keys[pressed];
     gfx_darken_rect(c, k.x, k.y, k.w, k.h);
@@ -263,6 +313,49 @@ static void paint_screen(void (*fn)(const Canvas &)) {
   }
 #endif
 }
+
+#if !BOARD_FRAMEBUFFER
+static void alt_cache_fill(void) {
+  if (alt_cache_page != cur_page) {
+    alt_cache_clear();
+    alt_cache_page = cur_page;
+  }
+  Page &p = pages[cur_page];
+  for (size_t i = 0; i < p.keys.size(); i++) {
+    Key &k = p.keys[i];
+    if (!k.on || k.alt.empty() || k.w <= 0 || k.h <= 0) continue;
+    bool have = false;
+    for (auto &a : alt_cache) have |= a.key == (int)i;
+    if (have) continue;
+    auto *px = (uint16_t *)heap_caps_malloc(k.w * k.h * 2, MALLOC_CAP_8BIT);
+    if (!px) continue;  // low on memory: the key just shows its normal look
+    Canvas t = {px, k.x, k.y, k.w, k.h};
+    gfx_fill(t, COL_DARK);
+    std::string path = std::string(DECK_DIR "/") + k.alt;
+    jpeg_draw_file(t, path.c_str(), k.x, k.y);
+    alt_cache.push_back({(int)i, px});
+  }
+}
+
+static void send_band(const Canvas &c) {
+  compose_overlays(c);
+  board_display_draw(0, c.y, c.w, c.h, c.px);
+}
+
+// Redraw rows [y0, y1): the page is decoded once, top to bottom, and stops below y1.
+static void draw_rows(int y0, int y1) {
+  if (show_info || !deck_loaded || pages.empty()) {
+    for (int y = y0 / BAND_H * BAND_H; y < y1; y += BAND_H) {
+      Canvas c = {band, 0, y, DISP_W, DISP_H - y < BAND_H ? DISP_H - y : BAND_H};
+      compose(c);
+      board_display_draw(0, y, c.w, c.h, band);
+    }
+    return;
+  }
+  alt_cache_fill();
+  jpeg_stream_file(page_path().c_str(), band, DISP_W, DISP_H, BAND_H, y0, y1, COL_DARK, send_band);
+}
+#endif
 
 static void draw_splash(const Canvas &c) {
   gfx_fill(c, COL_DARK);
@@ -364,6 +457,9 @@ static void load_deck(void) {
   }
   if (cur_page < 0 || cur_page >= (int)pages.size()) cur_page = 0;
   board_backlight(brightness);
+#if !BOARD_FRAMEBUFFER
+  alt_cache_clear();
+#endif
   load_page_image();
   mark_dirty();
 }
@@ -401,6 +497,8 @@ char *proto_hello_json(void) {
   cJSON_AddNumberToObject(d, "port", TCP_PORT);
   cJSON_AddNumberToObject(d, "lcd", lcd_variant);
   cJSON_AddBoolToObject(d, "hid", usb_hid_ready());
+  cJSON_AddStringToObject(d, "touch", BOARD_TOUCH_RESISTIVE ? "resistive" : "capacitive");
+  cJSON_AddBoolToObject(d, "tcal", touch_cal_active());
   cJSON_AddNumberToObject(d, "frames", g_frames);
   cJSON_AddNumberToObject(d, "flush_ms", g_flush_ms);
   cJSON_AddNumberToObject(d, "flush_timeouts", g_flush_timeouts);
@@ -558,6 +656,34 @@ static void handle_line(Channel *c, char *line) {
     reply(c, true);
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
+  } else if (!strcmp(t, "calibrate")) {
+    // Starts the on-screen touch calibration; the reply lists its three targets.
+    // {"reset":true} drops the stored calibration instead.
+    if (cJSON_IsTrue(cJSON_GetObjectItem(doc, "reset"))) {
+      touch_cal_clear();
+      nvs_handle_t h;
+      if (nvs_open("opendeck", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, "tcal");
+        nvs_commit(h);
+        nvs_close(h);
+      }
+      reply(c, true);
+    } else {
+      int tx[3], ty[3];
+      touch_cal_targets(DISP_W, DISP_H, tx, ty);
+      cJSON *d = cJSON_CreateObject();
+      cJSON_AddStringToObject(d, "t", "ok");
+      cJSON *arr = cJSON_AddArrayToObject(d, "targets");
+      for (int i = 0; i < 3; i++) {
+        cJSON *pt = cJSON_CreateArray();
+        cJSON_AddItemToArray(pt, cJSON_CreateNumber(tx[i]));
+        cJSON_AddItemToArray(pt, cJSON_CreateNumber(ty[i]));
+        cJSON_AddItemToArray(arr, pt);
+      }
+      send_json(c, d);
+      cJSON_Delete(d);
+      calibrate_request = true;
+    }
 #ifdef BOARD_VIRTUAL
   } else if (!strcmp(t, "tap")) {
     board_virtual_tap(jint(doc, "x", 0), jint(doc, "y", 0));
@@ -693,16 +819,25 @@ static void touch_poll(void) {
   // tens of ms mid-press and mid-swipe, so a lift only counts after 150 ms with
   // no finger. Any movement turns the gesture into a swipe and cancels the tap.
   static bool touching = false, moved = false;
-  static int64_t last_down_us = 0, last_fire_us = 0, tap_guard_until = 0;
+  static int64_t last_down_us = 0, last_fire_us = 0, tap_guard_until = 0, down_since = 0;
   static int last_fire_key = -1;
   static int16_t x0, y0, x1, y1;
   int16_t x, y;
-  bool down = board_touch_read(&x, &y);
+  bool down = board_touch_read(&x, &y) && touch_cal_apply(&x, &y, DISP_W, DISP_H);
   int64_t now = esp_timer_get_time();
   if (down) {
     last_down_us = now;
+    if (BOARD_TOUCH_RESISTIVE && touching && !moved && now - down_since > CALIBRATE_HOLD_US) {
+      // Resistive boards: held still for 5 s, recalibrate (the way back when touch is too far off to use the app).
+      touching = false;
+      if (pressed >= 0) mark_key(pressed);
+      pressed = -1;
+      calibrate_request = true;
+      return;
+    }
     if (!touching) {
       touching = true;
+      down_since = now;
       moved = false;
       x0 = x1 = x;
       y0 = y1 = y;
@@ -721,7 +856,7 @@ static void touch_poll(void) {
     }
     return;
   }
-  if (!touching || now - last_down_us < 150000) return;
+  if (!touching || now - last_down_us < TOUCH_LIFT_US) return;
   touching = false;
   int dx = x1 - x0, dy = y1 - y0, ldx = dx, ldy = dy;
   switch (rotation) {  // native swipe delta -> deck orientation
@@ -755,6 +890,91 @@ static void touch_poll(void) {
   }
 }
 
+// Touch calibration: three crosshairs, each tapped once.
+static int cal_step = 0;            // target being shown (3 = done)
+static const char *cal_note = "";   // extra line under the instructions
+
+static void draw_calibration(const Canvas &c) {
+  gfx_fill(c, COL_DARK);
+  int tx[3], ty[3];
+  touch_cal_targets(DISP_W, DISP_H, tx, ty);
+  int mid = DISP_H / 2 - FONT_BIG.line_h;
+  if (cal_step >= 3) {
+    gfx_text_center(c, FONT_BIG, DISP_W, mid, "Touch calibrated", COL_LIME);
+    return;
+  }
+  gfx_text_center(c, FONT_BIG, DISP_W, mid - 6, "Touch calibration", COL_TEXT);
+  char line[40];
+  snprintf(line, sizeof(line), "Tap the cross (%d of 3)", cal_step + 1);
+  gfx_text_center(c, FONT_BODY, DISP_W, mid + FONT_BIG.line_h + 2, line, COL_MUTED);
+  if (*cal_note) gfx_text_center(c, FONT_BODY, DISP_W, mid + FONT_BIG.line_h + FONT_BODY.line_h + 6, cal_note, COL_LIME);
+  for (int i = 0; i < cal_step; i++) gfx_fill_circle(c, tx[i], ty[i], 4, COL_MUTED);
+  int x = tx[cal_step], y = ty[cal_step];
+  gfx_fill_rect(c, x - 12, y - 1, 25, 3, COL_LIME);
+  gfx_fill_rect(c, x - 1, y - 12, 3, 25, COL_LIME);
+  gfx_round_outline(c, x - 9, y - 9, 19, 19, 9, 2, COL_LIME);
+}
+
+// Raw (uncalibrated) touch, averaged over one press. False if nobody touched within timeout_us.
+static bool cal_capture(int *mx, int *my, int64_t timeout_us) {
+  int16_t x, y;
+  int64_t t0 = esp_timer_get_time();
+  // Wait for any earlier finger to lift.
+  for (int64_t quiet = esp_timer_get_time(); esp_timer_get_time() - quiet < 150000;) {
+    if (board_touch_read(&x, &y)) quiet = esp_timer_get_time();
+    if (esp_timer_get_time() - t0 > timeout_us) return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  while (!board_touch_read(&x, &y)) {
+    if (esp_timer_get_time() - t0 > timeout_us) return false;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  // Average the readings while the finger is down (up to 400 ms).
+  long sx = x, sy = y;
+  int n = 1;
+  int64_t start = esp_timer_get_time(), last = start;
+  while (esp_timer_get_time() - start < 400000 && esp_timer_get_time() - last < 80000) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+    if (board_touch_read(&x, &y)) {
+      sx += x;
+      sy += y;
+      n++;
+      last = esp_timer_get_time();
+    }
+  }
+  *mx = sx / n;
+  *my = sy / n;
+  return true;
+}
+
+static void run_calibration(void) {
+  // Measuring reads the board's own mapping, so the stored calibration stays in
+  // use until a new one is solved; giving up keeps it.
+  int tx[3], ty[3], mx[3], my[3];
+  touch_cal_targets(DISP_W, DISP_H, tx, ty);
+  cal_note = "";
+  for (int attempt = 0; attempt < 3; attempt++) {
+    bool timed_out = false;
+    for (cal_step = 0; cal_step < 3; cal_step++) {
+      paint_screen(draw_calibration);
+      if (!cal_capture(&mx[cal_step], &my[cal_step], 60000000)) {
+        timed_out = true;
+        break;
+      }
+    }
+    if (timed_out) break;  // nobody there: keep what we had
+    TouchCal cal;
+    if (touch_cal_solve(mx, my, tx, ty, &cal)) {
+      touch_cal_save(cal);
+      cal_step = 3;
+      paint_screen(draw_calibration);
+      vTaskDelay(pdMS_TO_TICKS(700));
+      return;
+    }
+    cal_note = "Those taps didn't line up. Again:";
+  }
+}
+
 // Main
 extern "C" void app_main(void) {
   esp_err_t err = nvs_flash_init();
@@ -785,6 +1005,7 @@ extern "C" void app_main(void) {
   int64_t splash_until = esp_timer_get_time() + 1200000;
 
   board_touch_init();
+  if (!touch_cal_load() && BOARD_TOUCH_RESISTIVE) calibrate_request = true;  // first start: calibrate
 
   esp_vfs_littlefs_conf_t fs = {};
   fs.base_path = FS_ROOT;
@@ -825,6 +1046,14 @@ extern "C" void app_main(void) {
       last_info_refresh = now;
       mark_dirty();
     }
+    if (calibrate_request) {
+      calibrate_request = false;
+      // The protocol keeps running meanwhile (it needs the lock); only drawing waits.
+      xSemaphoreGive(lock);
+      run_calibration();
+      xSemaphoreTake(lock, portMAX_DELAY);
+      mark_dirty();
+    }
     if (fill_request >= 0) {
       fill_color = (uint16_t)fill_request;
       fill_request = -1;
@@ -839,11 +1068,7 @@ extern "C" void app_main(void) {
       vTaskDelay(pdMS_TO_TICKS(15));
       continue;
 #else
-      for (int y = dirty_y0 / BAND_H * BAND_H; y < dirty_y1; y += BAND_H) {
-        Canvas c = {band, 0, y, DISP_W, DISP_H - y < BAND_H ? DISP_H - y : BAND_H};
-        compose(c);
-        board_display_draw(0, y, c.w, c.h, band);
-      }
+      draw_rows(dirty_y0, dirty_y1);
 #endif
     }
     xSemaphoreGive(lock);

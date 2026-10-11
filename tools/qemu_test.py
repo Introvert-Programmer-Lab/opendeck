@@ -262,6 +262,52 @@ def main():
         ev = b.wait_event("key")
         check(ev.get("id") == key["id"], "a tap on the first key reports that key")
 
+        # Touch calibration, on a touch film mounted mirrored on both axes like the
+        # 2-USB CYD in issue #1: first the bug (a tap hits the opposite key), then
+        # calibrate by tapping each target where such a film reports it, then check
+        # the same tap lands on its key.
+        def mirrored(px, py):
+            return w - 1 - px, h - 1 - py
+
+        def key_at(px, py):
+            for k in manifest["pages"][0]["keys"]:
+                kx, ky, kw2, kh2 = k["r"]
+                if kx <= px < kx + kw2 and ky <= py < ky + kh2:
+                    return k
+            return None
+
+        # A point on one key whose mirror lies on another key: the bug shows as a wrong key.
+        def probe():
+            for k in manifest["pages"][0]["keys"]:
+                kx, ky, kw2, kh2 = k["r"]
+                for py in range(ky + 4, ky + kh2 - 4, 4):
+                    for px in range(kx + 4, kx + kw2 - 4, 4):
+                        o = key_at(*mirrored(px, py))
+                        if o is not None and o is not k:
+                            return k, mirrored(px, py)
+            raise RuntimeError("no key mirrors onto another key")
+
+        last, (fx, fy) = probe()
+        b.request({"t": "tap", "x": fx, "y": fy})
+        ev = b.wait_event("key")
+        check(ev.get("id") != last["id"], "without calibration, a mirrored film's tap hits another key (the bug)")
+        b.settle()
+        cal = b.request({"t": "calibrate"})
+        targets = cal.get("targets") or []
+        check(len(targets) == 3, "calibration starts and lists its three targets")
+        for tx, ty in targets:
+            b.settle()  # the cross is on screen and the firmware waits for a tap
+            mx, my = mirrored(tx, ty)
+            b.request({"t": "tap", "x": mx, "y": my})
+        b.settle()
+        state = b.request({"t": "hello"}, want=("hello",))
+        check(state.get("tcal") is True, "the calibration is solved and stored")
+        b.request({"t": "tap", "x": fx, "y": fy})
+        ev = b.wait_event("key")
+        check(ev.get("id") == last["id"], "after calibration the same tap hits the right key")
+        b.request({"t": "calibrate", "reset": True})
+        b.settle()
+
         b.request({"t": "get", "f": "deck.json", "o": 0})
         b.request({"t": "fill", "c": 0xF800})
         filled = b.settle()

@@ -23,7 +23,7 @@ USB serial library builds with the current Android tools.
 | # | Family | Models | Screen | Chip | Status |
 |---|---|---|---|---|---|
 | 1 | 3.5" Guition | **JC3248W535C** | 320x480 IPS, capacitive | ESP32-S3, 16 MB, native USB | tested |
-| 2 | 2.8" Cheap Yellow Display | **ESP32-2432S028R**, ESP32-2432S028R v3 (USB-C, ST7789) | 240x320, resistive | ESP32, 4 MB | from pinout |
+| 2 | 2.8" Cheap Yellow Display | **ESP32-2432S028R**, ESP32-2432S028R 2 USB (USB-C + micro-USB, ST7789), ESP32-2432S028R v3 (USB-C, ST7789) | 240x320, resistive | ESP32, 4 MB | from pinout |
 | 3 | 2.8" capacitive CYD | **JC2432W328C** | 240x320 IPS, capacitive | ESP32, 4 MB | from pinout |
 | 4 | 2.4" CYD | **ESP32-2432S024C**, ESP32-2432S024R | 240x320, capacitive or resistive | ESP32, 4 MB | from pinout |
 | 5 | 3.2" CYD | **ESP32-2432S032C** | 240x320 IPS, capacitive | ESP32, 4 MB | from pinout |
@@ -39,6 +39,25 @@ built from the board's published schematic and the configurations other open
 source projects use for it, but nobody has reported back yet. If you try one,
 please open an issue and say how it went. If colors look like a photo
 negative, turn on **Invert colors** in the app's deck settings.
+
+### ESP32-2432S028R with two USB ports ("CYD2USB")
+
+Reported in [issue #1](https://github.com/Introvert-Programmer-Lab/opendeck/issues/1).
+This revision has both a USB-C and a micro-USB port and looks like the original
+CYD, but differs where it matters:
+
+- The panel is an ST7789, not an ILI9341: BGR color order, inversion off, and
+  a gamma setting tuned for it (firmware `esp32-2432s028r-2usb`).
+- The panel's MISO (GPIO 12) is wired, so the app can read the display ID and
+  tell it apart from the USB-C-only v3, whose ID cannot be read.
+- The XPT2046 touch panel is mounted the other way round: both axes are
+  reversed compared with the original R. Flashing the R firmware on it makes a
+  tap at the top hit a key at the bottom.
+- The USB-C port has no CC resistors, so a USB-C to USB-C cable does not power
+  it. Use a USB-A to USB-C cable or the micro-USB port.
+
+Like every resistive board, it asks for a three-point touch calibration the
+first time it starts.
 
 ### Native USB and USB-UART boards
 
@@ -94,7 +113,8 @@ anything is erased:
    CST816 or CST820 at 0x15, an FT6336G at 0x38, the JC3248W535's controller at 0x3B, or an XPT2046
    on one of the two SPI buses the resistive boards use.
 4. If boards with different display chips are still left, it reads the display
-   controller's ID (ILI9341, ST7789 or ST7796).
+   controller's ID (ILI9341, ST7789 or ST7796). Boards whose panel MISO line is
+   not wired (the USB-C-only CYD v3) cannot answer, so a readable ID rules them out.
 
 These are read-only checks for the parts on the board. A board is only
 accepted when its own touch controller answered. Right before writing, the

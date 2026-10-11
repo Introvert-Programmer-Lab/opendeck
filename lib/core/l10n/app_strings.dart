@@ -43,6 +43,9 @@ class S {
   String get board => _t('Board', 'اللوحة الإلكترونية');
   String get address => _t('Address', 'العنوان');
   String get hotspotHint => _t('Setup hotspot', 'نقطة الإعداد');
+  String get calibrateTouch => _t('Calibrate touch', 'معايرة اللمس');
+  String get calibrateTouchHint => _t('Touch the crosshairs on the board with a stylus or fingernail.',
+      'المس علامات التصويب على اللوحة بقلم أو بطرف الظفر.');
   String get hostOnlyNote => _t(
       'Actions like opening apps or muting the mic run on the computer where this app is open.',
       'الأوامر مثل فتح التطبيقات أو كتم المايك تعمل على الحاسوب الذي يعمل عليه هذا التطبيق.');

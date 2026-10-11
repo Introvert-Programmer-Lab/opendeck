@@ -20,6 +20,7 @@ class DeviceInfo {
     required this.fw,
     this.id = '',
     this.lcd = 0,
+    this.touch = '',
     required this.board,
     required this.name,
     required this.width,
@@ -42,6 +43,9 @@ class DeviceInfo {
 
   /// Panel variant the firmware uses; bit 0 flips color inversion.
   final int lcd;
+
+  /// "resistive" or "capacitive". Empty on older firmware.
+  final String touch;
   final int width, height, fsTotal, fsUsed, psramFree, pages, page;
   final bool wifiAp, wifiConnected;
   final String wifiSsid, wifiIp;
@@ -55,6 +59,7 @@ class DeviceInfo {
       fw: '${j['fw'] ?? ''}',
       id: '${j['id'] ?? ''}',
       lcd: i('lcd'),
+      touch: '${j['touch'] ?? ''}',
       board: '${j['board'] ?? ''}',
       name: '${j['name'] ?? 'OpenDeck'}',
       width: i('w', 320),
@@ -199,6 +204,9 @@ class DeckClient {
   Future<void> showInfo(bool on) => request({'t': 'info', 'on': on});
   Future<void> resetDeck() => request({'t': 'reset'});
   Future<void> reboot() => request({'t': 'reboot'});
+
+  /// Shows the 3-point touch calibration on the board (resistive panels).
+  Future<void> calibrateTouch() => request({'t': 'calibrate'});
 
   Future<Uint8List?> getFile(String name) async {
     final out = BytesBuilder(copy: false);

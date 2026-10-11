@@ -101,6 +101,7 @@ bool fits(BoardProfile b, ProbeFacts f) {
     if (r == null || f.resistive[r.key] != true) return false;
   }
   if (f.controller != null && b.controller != null && f.controller != b.controller) return false;
+  if (f.controller != null && !b.controllerReadable) return false;
   return true;
 }
 

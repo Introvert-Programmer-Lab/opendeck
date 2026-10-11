@@ -1,7 +1,7 @@
 # The board comes from the top-level CMakeLists (OPENDECK_BOARD, board.cmake).
 idf_build_get_property(build_dir BUILD_DIR)
 include(${build_dir}/opendeck_board.cmake)
-set(srcs main.cpp gfx.cpp jpeg.cpp net.cpp ${OPENDECK_BOARD_DIR}/board.cpp)
+set(srcs main.cpp gfx.cpp jpeg.cpp jpeg_stream.cpp touch_cal.cpp net.cpp ${OPENDECK_BOARD_DIR}/board.cpp)
 if(BOARD_LINK STREQUAL "usb")
   list(APPEND srcs usb_link_tinyusb.cpp)
 else()

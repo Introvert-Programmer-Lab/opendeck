@@ -14,6 +14,25 @@ static int sample(uint8_t command) {
   return ((t.rx_data[1] << 8) | t.rx_data[2]) >> 3;  // 12 bits
 }
 
+// Median of 5 readings of one channel. The first conversion after switching
+// channels is the noisiest on these films, so it's taken and dropped; a median
+// (not a mean) keeps one bad spike from moving the point.
+static int median(uint8_t command) {
+  int v[5];
+  if (sample(command) < 0) return -1;
+  for (int i = 0; i < 5; i++) {
+    v[i] = sample(command);
+    if (v[i] < 0) return -1;
+  }
+  for (int i = 1; i < 5; i++)
+    for (int j = i; j > 0 && v[j - 1] > v[j]; j--) {
+      int t = v[j];
+      v[j] = v[j - 1];
+      v[j - 1] = t;
+    }
+  return v[2];
+}
+
 void xpt2046_init(const Xpt2046Config &cfg) {
   conf = cfg;
   if (cfg.own_bus) {
@@ -39,12 +58,8 @@ bool xpt2046_read(int *x, int *y) {
   if (z1 < 0 || z2 < 0) return false;
   int z = z1 + 4095 - z2;
   if (z < 400) return false;  // not pressed hard enough
-  long sx = 0, sy = 0;
-  for (int i = 0; i < 4; i++) {
-    sx += sample(0xD1);
-    sy += sample(0x91);
-  }
-  int rx = sx / 4, ry = sy / 4;
+  int rx = median(0xD1), ry = median(0x91);
+  if (rx < 0 || ry < 0) return false;
   // Scale the calibrated raw range to 0..4095; the board maps that to pixels.
   rx = (rx - conf.raw_min_x) * 4096 / (conf.raw_max_x - conf.raw_min_x);
   ry = (ry - conf.raw_min_y) * 4096 / (conf.raw_max_y - conf.raw_min_y);

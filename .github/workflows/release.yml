@@ -25,6 +25,7 @@ jobs:
           - { board: esp32-4827s043c, target: esp32s3 }
           - { board: esp32-4848s040c, target: esp32s3 }
           - { board: esp32-2432s028r, target: esp32 }
+          - { board: esp32-2432s028r-2usb, target: esp32 }
           - { board: esp32-2432s028rv3, target: esp32 }
           - { board: jc2432w328c, target: esp32 }
           - { board: esp32-2432s024c, target: esp32 }

@@ -23,7 +23,7 @@
 
 You do not need to install any developer tools. Three steps:
 
-**1. Get a board.** OpenDeck runs on [17 popular ESP32 touch screens](#supported-boards), from the 2.8 inch "Cheap Yellow Display" you find on Temu and Amazon for a few dollars to 7 inch 800x480 panels. The best tested one is the 3.5 inch **Guition JC3248W535C** ([Amazon](https://www.amazon.com/dp/B0DGXRZ58V)). The [board table](#supported-boards) has a buy link for each board. You also need a USB cable that carries data (not a charge-only one).
+**1. Get a board.** OpenDeck runs on [18 popular ESP32 touch screens](#supported-boards), from the 2.8 inch "Cheap Yellow Display" you find on Temu and Amazon for a few dollars to 7 inch 800x480 panels. The best tested one is the 3.5 inch **Guition JC3248W535C** ([Amazon](https://www.amazon.com/dp/B0DGXRZ58V)). The [board table](#supported-boards) has a buy link for each board. You also need a USB cable that carries data (not a charge-only one).
 
 **2. Get the app.** Download it from the [latest release](https://github.com/Introvert-Programmer-Lab/opendeck/releases/latest):
 
@@ -108,12 +108,12 @@ The wire protocol is line-delimited JSON over USB serial or TCP, described in [d
 
 ## Supported boards
 
-Eleven board families, seventeen models. The app detects which one is plugged in.
+Eleven board families, eighteen models. The app detects which one is plugged in.
 
 | Screen | Models | Chip | Touch | USB keyboard | Buy |
 |---|---|---|---|---|---|
 | 3.5" 320x480 | **Guition JC3248W535C** (tested) | ESP32-S3 | capacitive | yes | [Amazon](https://www.amazon.com/dp/B0DGXRZ58V) |
-| 2.8" 240x320 | ESP32-2432S028R ("Cheap Yellow Display"), ESP32-2432S028R v3 | ESP32 | resistive | no | [Temu (2 pack)](https://www.temu.com/2-sets-of-esp32-development-boards-with-2-8-inch-240-320-resolution-lcd-display-tft-module-with--semiconductor-product-circuit-board-prototype-g-606476089325517.html), [Amazon](https://www.amazon.com/dp/B0CKYVPWX9) |
+| 2.8" 240x320 | ESP32-2432S028R ("Cheap Yellow Display"), ESP32-2432S028R 2 USB (USB-C + micro-USB), ESP32-2432S028R v3 | ESP32 | resistive | no | [Temu (2 pack)](https://www.temu.com/2-sets-of-esp32-development-boards-with-2-8-inch-240-320-resolution-lcd-display-tft-module-with--semiconductor-product-circuit-board-prototype-g-606476089325517.html), [Amazon](https://www.amazon.com/dp/B0CKYVPWX9) |
 | 2.8" 240x320 | Guition JC2432W328C | ESP32 | capacitive | no | [Amazon](https://www.amazon.com/dp/B0D5H84RDB) |
 | 2.8" 240x320 | LCDWIKI ES3C28P (Hosyond ESP32-S3 2.8") | ESP32-S3 | capacitive | yes | [Amazon](https://www.amazon.com/dp/B0FKG7WRWV) |
 | 2.4" 240x320 | ESP32-2432S024C, ESP32-2432S024R | ESP32 | capacitive / resistive | no | [Amazon](https://www.amazon.com/dp/B0CLGD2DG6), [2 pack](https://www.amazon.com/dp/B0DC6DV88F) (C) |
@@ -126,6 +126,8 @@ Eleven board families, seventeen models. The app detects which one is plugged in
 | 4" 480x480 | Guition ESP32-4848S040C | ESP32-S3 | capacitive | no | search the model number |
 
 Only the JC3248W535 has been run on real hardware so far. The others are built from their published pinouts; reports are welcome. Boards marked "no" under USB keyboard reach the chip through a CH340 or CP2102 bridge, so their keys act through the app (over USB or Wi-Fi) rather than as a keyboard.
+
+Resistive boards (the R models) ask you to tap three crosshairs the first time they start, so taps land where you touch. You can redo it any time from the app (**Calibrate touch** in the deck panel) or by holding a finger on the screen for 5 seconds.
 
 Links go to the cheapest listing found for each board, Temu first where it has one. For boards without a link, search Temu or AliExpress for the model number. [docs/BOARDS.md](docs/BOARDS.md) has what to check before ordering, how detection works and how to add a board.
 
